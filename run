@@ -1,5 +1,7 @@
 #!/bin/bash
 
+COUNT=0
+
 # Colourise the output
 RED='\033[0;31m'        # Red
 GRE='\033[0;32m'        # Green
@@ -19,9 +21,9 @@ get_meta() {
   echo ${arr[$1]:1}
 }
 
-get_meta_value() {
+get_meta_order() {
   if [[ $1 == 'TYPE' ]]; then echo $META_TYPE
-  elif [[ $1 == 'CATERGORY' ]]; then echo $META_CATERGORY
+  elif [[ $1 == 'CATEGORY' ]]; then echo $META_CATEGORY
   elif [[ $1 == 'DATE' ]]; then echo $META_DATE
   elif [[ $1 == 'PLACE' ]]; then echo $META_PLACE
   elif [[ $1 == 'STATUS' ]]; then echo $META_STATUS
@@ -66,21 +68,21 @@ handle_file() {
 
 		NEW_NAME="${OLD_NAME/"$text_target"/"$new_text"}";
 
-
 		mv "$OLD_NAME" "$NEW_NAME"
 	elif [[ $ACTION == "remove" ]]; then
 		NEW_NAME="$DIR/${FILE_NAME//"$ACTIONARG"/}"
+
 		mv "$OLD_NAME" "$NEW_NAME"
 	elif [[ $ACTION == "meta-insert" ]]; then
 		local result
 		IFS='|' read -ra result <<< "$ACTIONARG"
-		meta_name="$(get_meta_value "${result[0]}")"
+		meta_order="$(get_meta_order "${result[0]}")"
 		meta_added="${result[1]}"
 		insert_direction="${result[2]}"
 
-		local meta_value=$(get_meta $meta_name "$OLD_NAME")
+		local meta_value="$(get_meta $meta_order "$FILE_NAME")"
 
-		if [[ -z $meta_name ]]; then echo "Please specify meta name"; exit 1; fi
+		if [[ -z $meta_order ]]; then echo "Please specify meta order"; exit 1; fi
 		if [[ -z $meta_added ]]; then echo "Please specify ${result[0]} INSERT value"; exit 1; fi
 		if [[ -z $insert_direction ]]; then echo "Please specify ${result[0]} INSERT direction"; exit 1; fi
 
@@ -89,19 +91,25 @@ handle_file() {
 		elif [[ $insert_direction == "a" ]]; then
 		 	NEW_NAME="${OLD_NAME/"[$meta_value]"/"[$meta_value$meta_added]"}";
 		fi
+
+		mv "$OLD_NAME" "$NEW_NAME"
 	elif [[ $ACTION == "meta-replace" ]]; then
 		local result
 		IFS='|' read -ra result <<< "$ACTIONARG"
-		meta_name="$(get_meta_value "${result[0]}")"
+		meta_order="$(get_meta_order "${result[0]}")"
 		meta_arg="${result[1]}"
 
-		local meta_value=$(get_meta $meta_name "$OLD_NAME")
+		local meta_value="$(get_meta $meta_order "$FILE_NAME")"
 
-		if [[ -z $meta_name ]]; then echo "Please specify meta name"; exit 1; fi
-		if [[ -z $meta_added ]]; then echo "Please specify ${result[0]} REPLACE value"; exit 1; fi
+		if [[ -z $meta_order ]]; then echo "Please specify meta order"; exit 1; fi
+		if [[ -z $meta_arg ]]; then echo "Please specify ${result[0]} REPLACE value"; exit 1; fi
 
 		NEW_NAME="${OLD_NAME/"[$meta_value]"/"[$meta_arg]"}";
+
+		mv "$OLD_NAME" "$NEW_NAME"
 	fi
+
+	COUNT=$((COUNT + 1))
 
     printf "%*s\tOld Name:\t${RED}%s${NCL}\n"      $((indent+4)) '' "$OLD_NAME"
 	printf "%*s\tNew Name:\t${GRE}%s${NCL}\n"      $((indent+4)) '' "$NEW_NAME"
@@ -110,7 +118,14 @@ handle_file() {
 
 walk() {
 	for entry in "$1"/*; do [[ -f "$entry" ]] && handle_file; done
-	for entry in "$1"/*; do [[ -d "$entry" ]] && walk "$entry"; done
+	
+	if [[ $RECURSIVE == "1" ]]; then
+		for entry in "$1"/*; do
+			if [[ -d "$entry" ]] && [[ $entry != *"(Ignore)"* ]]; then
+				walk "$entry";
+			fi
+		done
+	fi
 }
 
 
@@ -130,17 +145,26 @@ fi
 
 if [[ -z "${3}" ]]; then
 	echo "Please specify the action argument";
-	exit 1;
+	exit 1; 
 else
 	ACTIONARG="${3}";
 fi
 
 read -p "Are you sure want to prepend all file in '${ABS_PATH}' with $3? (y/n) " choice
 case "$choice" in 
-  y|Y ) echo "Running handlefile...";;
+  y|Y ) echo "Running handlefilename...";;
   n|N ) exit 1;;
   * ) exit 1;;
 esac
 
+read -p "Do you want do it recursively? (y/n (default=n)) " choice
+case "$choice" in 
+  y|Y ) RECURSIVE=1;;
+  n|N ) RECURSIVE=0;;
+  * ) RECURSIVE=0;;
+esac
+
 walk "${ABS_PATH}"
+
+echo "Total files: $COUNT"
 echo
