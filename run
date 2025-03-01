@@ -31,6 +31,74 @@ get_meta_order() {
   fi
 }
 
+num_to_arnum() {
+	# convert numbers
+	local res="${1//1/١}"
+	res="${res//2/٢}"
+	res="${res//3/٣}"
+	res="${res//4/٤}"
+	res="${res//5/٥}"
+	res="${res//6/٦}"
+	res="${res//7/٧}"
+	res="${res//8/٨}"
+	res="${res//9/٩}"
+	res="${res//0/٠}"
+
+	echo "$res"
+}
+
+num_to_hijr() {
+	local res="${1//"01"/"محرم"}"
+	res="${res//"02"/"صفر"}"
+	res="${res//"03"/"ربيع الأول"}"
+	res="${res//"04"/"ربيع الآخر"}"
+	res="${res//"05"/"جمادى الأولى"}"
+	res="${res//"06"/"جمادى الآخرة"}"
+	res="${res//"07"/"رجب"}"
+	res="${res//"08"/"شعبان"}"
+	res="${res//"09"/"رمضان"}"
+	res="${res//"10"/"شوال"}"
+	res="${res//"11"/"ذو القعدة"}"
+	res="${res//"12"/"ذو الحجة"}"
+
+	echo "$res"
+}
+
+convert_to_ar() {
+	# convert type
+	res="${1//"NOTYPE"/"نوع مجهول"}"
+	res="${res//"DARS"/"الدروس"}"
+	res="${res//"KHUTHBAH"/"الخطب"}"
+	res="${res//"MUHADHARAH"/"المجاضرات"}"
+	res="${res//"FATWA"/"الفتاوى"}"
+
+	# convert category
+	res="${res//"NOCATEGORY"/"موضوع مجهول"}"
+	res="${res//"ADAB"/"اﻵداب"}"
+	res="${res//"AHLUSSUNNAH"/"أهل السنة"}"
+	res="${res//"ALQURAN"/"القرآن"}"
+	res="${res//"ROMADHON"/"رمضان"}"
+	res="${res//"ROQOIQ"/"الرقائق"}"
+	res="${res//"SHIYAM"/"الصيام"}"
+	res="${res//"SHOLAT"/"الصلاة"}"
+
+	# convert place
+	res="${res//"NOPLACE"/"مكان مجهول"}"
+
+	# convert date
+	res="${res//"NODATE"/"تاريخ مجهول"}"
+
+	# convert status
+	res="${res//"NOCLEAN"/"غير مصفى"}"
+	res="${res//"CLEAN"/"مصفى"}"
+
+	# convert confirm
+	res="${res//"NOCONFIRM"/"غير متأكد"}"
+	res="${res//"CONFIRM"/"متأكد"}"
+
+	echo "$res"
+}
+
 handle_file() {
     FILE_NAME="$(basename "${entry}")"
     DIR="$(dirname "${entry}")"
@@ -80,11 +148,11 @@ handle_file() {
 		meta_added="${result[1]}"
 		insert_direction="${result[2]}"
 
-		local meta_value="$(get_meta $meta_order "$FILE_NAME")"
-
 		if [[ -z $meta_order ]]; then echo "Please specify meta order"; exit 1; fi
 		if [[ -z $meta_added ]]; then echo "Please specify ${result[0]} INSERT value"; exit 1; fi
 		if [[ -z $insert_direction ]]; then echo "Please specify ${result[0]} INSERT direction"; exit 1; fi
+		
+		local meta_value="$(get_meta $meta_order "$FILE_NAME")"
 
 		if [[ $insert_direction == "b" ]]; then
 			NEW_NAME="${OLD_NAME/"[$meta_value]"/"[$meta_added$meta_value]"}";
@@ -93,18 +161,73 @@ handle_file() {
 		fi
 
 		mv "$OLD_NAME" "$NEW_NAME"
-	elif [[ $ACTION == "meta-replace" ]]; then
+	elif [[ $ACTION == "meta-overwrite" ]]; then
 		local result
 		IFS='|' read -ra result <<< "$ACTIONARG"
 		meta_order="$(get_meta_order "${result[0]}")"
 		meta_arg="${result[1]}"
 
+		if [[ -z $meta_order ]]; then echo "Please specify meta order"; exit 1; fi
+		if [[ -z $meta_arg ]]; then echo "Please specify ${result[0]} OVERWRITE value"; exit 1; fi
+
 		local meta_value="$(get_meta $meta_order "$FILE_NAME")"
+		NEW_NAME="${OLD_NAME/"[$meta_value]"/"[$meta_arg]"}";
+
+		mv "$OLD_NAME" "$NEW_NAME"
+	elif [[ $ACTION == "meta-replace" ]]; then
+		local result
+		IFS='|' read -ra result <<< "$ACTIONARG"
+		meta_order="$(get_meta_order "${result[0]}")"
+		meta_target="${result[1]}"
+		meta_replace_value="${result[2]}"
 
 		if [[ -z $meta_order ]]; then echo "Please specify meta order"; exit 1; fi
-		if [[ -z $meta_arg ]]; then echo "Please specify ${result[0]} REPLACE value"; exit 1; fi
+		if [[ -z $meta_target ]]; then echo "Please specify ${result[0]} REPLACE target"; exit 1; fi
+		if [[ -z $meta_replace_value ]]; then echo "Please specify ${result[0]} REPLACE value"; exit 1; fi
 
-		NEW_NAME="${OLD_NAME/"[$meta_value]"/"[$meta_arg]"}";
+		local meta_value="$(get_meta $meta_order "$FILE_NAME")"
+		local replaced="${meta_value//"$meta_target"/"$meta_replace_value"}";
+
+		NEW_NAME="${OLD_NAME/"[$meta_value]"/"[$replaced]"}";
+
+		mv "$OLD_NAME" "$NEW_NAME"
+	elif [[ $ACTION == "convert-to-ar" ]]; then
+		FILE_NAME="$(convert_to_ar "$FILE_NAME")"
+
+		# convert date dynamically
+		local date_arr
+		local date="$(get_meta $META_DATE "$FILE_NAME")"
+
+		local converted_date_arr=()
+		if [[ $date != "تاريخ مجهول" ]]; then
+			IFS='-' read -ra date_arr <<< "$date"
+
+			if [[ ! -z ${date_arr[2]} ]]; then
+				if [ ${date_arr[2]} -gt 9 ]; then converted_date_arr[0]="$(num_to_arnum ${date_arr[2]})"
+				else
+					local single_digit="${date_arr[2]:1:1}"
+
+					converted_date_arr[0]="$(num_to_arnum $single_digit)"
+				fi
+			fi
+
+			if [[ ! -z ${date_arr[1]} ]]; then
+				converted_date_arr[1]="من $(num_to_hijr ${date_arr[1]})"
+			fi
+
+			if [[ ! -z ${date_arr[0]} ]]; then
+				converted_date_arr[2]="$(num_to_arnum ${date_arr[0]})ه"
+			fi
+
+			function join_by { local IFS="$1"; shift; echo "$*"; }
+
+			local converted_date="$(join_by " " ${converted_date_arr[@]})"
+
+			FILE_NAME="${FILE_NAME//"[$date]"/"[$converted_date]"}"
+		fi
+
+		# finishing
+		NEW_NAME="$DIR/$(convert_to_ar "$FILE_NAME")"
 
 		mv "$OLD_NAME" "$NEW_NAME"
 	fi
